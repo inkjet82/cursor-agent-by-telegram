@@ -1,0 +1,29 @@
+{
+  "defaultAlias": "telegram",
+  "roots": ["C:\\project"],
+  "aliases": {
+    "telegram": "C:\\project\\cursor-agent-by-telegram",
+    "moodeng": "C:\\project\\moodeng",
+    "ai_serivce": "C:\\project\\ai_service"
+  },
+  "profiles": {
+    "telegram": {
+      "skillRoots": [".cursor/skills", ".agents/skills"],
+      "extraSkillDirs": [],
+      "defaultPinnedSkills": [],
+      "settingSources": ["project", "user"]
+    },
+    "moodeng": {
+      "skillRoots": [".cursor/skills", ".agents/skills"],
+      "extraSkillDirs": [],
+      "defaultPinnedSkills": [],
+      "settingSources": ["project", "user"]
+    },
+    "ai_serivce": {
+      "skillRoots": [".cursor/skills", ".agents/skills"],
+      "extraSkillDirs": [],
+      "defaultPinnedSkills": [],
+      "settingSources": ["project", "user"]
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "defaultMode": "ask",
+  "modelId": "composer-2.5",
+  "skillSettingSources": ["project", "user"],
+  "force": false
+}

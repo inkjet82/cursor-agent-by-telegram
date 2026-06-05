@@ -1,0 +1,8 @@
+{
+  "composer-2.5": [
+    { "id": "fast", "value": "false" }
+  ],
+  "composer-2": [
+    { "id": "fast", "value": "false" }
+  ]
+}

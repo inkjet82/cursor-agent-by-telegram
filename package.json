@@ -1,0 +1,37 @@
+{
+  "name": "cursor-agent-by-telegram",
+  "version": "1.0.0",
+  "description": "Telegram bot to control local Cursor Agent via @cursor/sdk",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "pm2:start": "npm run build && npx pm2 start ecosystem.config.cjs",
+    "pm2:restart": "npm run build && npx pm2 restart cursor-tg-bot || npx pm2 start ecosystem.config.cjs",
+    "pm2:stop": "npx pm2 stop cursor-tg-bot",
+    "pm2:logs": "npx pm2 logs cursor-tg-bot",
+    "pm2:save": "npx pm2 save"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inkjet82/cursor-agent-by-telegram.git"
+  },
+  "license": "ISC",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.18",
+    "bottleneck": "^2.19.5",
+    "dotenv": "^17.4.2",
+    "grammy": "^1.43.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

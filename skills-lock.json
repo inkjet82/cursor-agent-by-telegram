@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "control-cli": {
+      "source": "cursor/plugins",
+      "sourceType": "github",
+      "computedHash": "9d1853259522d47dccc45a7c8d5c68cbf568efbe8891b62be3df74fd91db9c41"
+    },
+    "cursor-sdk": {
+      "source": "cursor/plugins",
+      "sourceType": "github",
+      "computedHash": "4074ed933933b93d8f699dc719a98cc419ffae29c4cbefbffb904a1db707d173"
+    },
+    "telegram-bot-builder": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "10d834d4ef683b85330843d46b67aca6d2e4267c40901a95dcd14908b1594a83"
+    }
+  }
+}
