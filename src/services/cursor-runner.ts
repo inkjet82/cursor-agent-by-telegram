@@ -272,9 +272,12 @@ ${planSummary}`;
           : err instanceof CursorAgentError &&
               /already has active run|active run/i.test(err.message)
             ? "이전 실행이 아직 종료되지 않았습니다. 자동 정리 후에도 실패했습니다. /cancel 또는 /new 후 다시 시도하세요."
-            : err instanceof CursorAgentError
-            ? `시작 실패: ${err.message} (retryable=${err.isRetryable})`
-            : err instanceof Error
+            : err instanceof CursorAgentError &&
+                /not found/i.test(err.message)
+              ? "에이전트를 찾을 수 없습니다. /new 로 새 세션을 만든 뒤 다시 시도하세요. (Cursor IDE가 실행 중인지 확인)"
+              : err instanceof CursorAgentError
+              ? `시작 실패: ${err.message} (retryable=${err.isRetryable})`
+              : err instanceof Error
               ? err.message
               : String(err);
       await api.editMessageText(chatId, statusId, `❌ ${msg}`).catch(() => {
@@ -302,5 +305,41 @@ ${planSummary}`;
     const state = await this.userStore.get(userId);
     const record = await this.sdk.createFreshSession(userId, state);
     return record.label;
+  }
+
+  async validateActiveSession(userId: number): Promise<string | undefined> {
+    return this.sdk.validateActiveSession(userId);
+  }
+
+  /** /restart 빌드 실패 시 봇 프로젝트에서 타입 오류만 수정 */
+  async runAgentFix(
+    userId: number,
+    opts: { compileErrors: string; workspacePath: string },
+  ): Promise<void> {
+    const state = await this.userStore.get(userId);
+    const fixState: UserState = {
+      ...state,
+      workspacePath: opts.workspacePath,
+      force: true,
+    };
+    const prompt = `Fix TypeScript compile errors in this repository (Telegram bot). Only edit files under the current workspace. Minimal changes. Do not explain at length.
+
+Compiler output:
+${opts.compileErrors.slice(-12000)}`;
+
+    const sdkRun = await this.sdk.run({
+      userId,
+      prompt,
+      mode: "agent",
+      state: fixState,
+      pendingSkills: [],
+    });
+    try {
+      if (sdkRun.result.status === "error") {
+        throw new Error(sdkRun.result.text || "Agent fix run failed");
+      }
+    } finally {
+      await sdkRun.dispose();
+    }
   }
 }

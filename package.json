@@ -6,9 +6,11 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "verify:files": "npm run build && node scripts/verify-file-delivery.mjs",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "pm2:start": "npm run build && npx pm2 start ecosystem.config.cjs",
+    "pm2:reload": "node scripts/pm2-reload.mjs",
     "pm2:restart": "npm run build && npx pm2 restart cursor-tg-bot || npx pm2 start ecosystem.config.cjs",
     "pm2:stop": "npx pm2 stop cursor-tg-bot",
     "pm2:logs": "npx pm2 logs cursor-tg-bot",

@@ -34,7 +34,7 @@ import {
   formatWorkspacesPickerText,
   looksLikeFolderPath,
 } from "./utils/workspace-label.js";
-import { schedulePm2Restart } from "./services/bot-lifecycle.js";
+import { runRestartWithFix } from "./services/bot-restart.js";
 
 const BOT_COMMANDS = [
   { command: "start", description: "시작 및 키보드" },
@@ -55,7 +55,7 @@ const BOT_COMMANDS = [
   { command: "approve", description: "Plan 승인 후 실행" },
   { command: "models", description: "모델 목록" },
   { command: "mode", description: "기본 모드" },
-  { command: "restart", description: "빌드 후 PM2 재시작" },
+  { command: "restart", description: "빌드·자동수정 후 PM2 재시작" },
 ];
 
 export function createBot(env: Env, app: BotContext["app"]): Bot<BotContext> {
@@ -81,10 +81,7 @@ export function createBot(env: Env, app: BotContext["app"]): Bot<BotContext> {
   });
 
   bot.command("restart", async (ctx) => {
-    await ctx.reply(
-      "빌드 후 PM2로 재시작합니다.\n잠시 연결이 끊겼다가, 성공하면 「봇이 재시작되었습니다」 알림이 옵니다.",
-    );
-    schedulePm2Restart();
+    await runRestartWithFix(ctx);
   });
 
   bot.command("settings", async (ctx) => {
@@ -164,8 +161,13 @@ export function createBot(env: Env, app: BotContext["app"]): Bot<BotContext> {
 
   bot.command("new", async (ctx) => {
     const userId = ctx.from!.id;
-    const label = await app.runner.createFreshSession(userId);
-    await ctx.reply(`새 세션: ${label}`);
+    try {
+      const label = await app.runner.createFreshSession(userId);
+      await ctx.reply(`✅ 새 세션: ${label}\n이제 메시지를 보내세요.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await ctx.reply(`❌ 새 세션 실패:\n${msg.slice(0, 3500)}`);
+    }
   });
 
   bot.command("session", async (ctx) => {

@@ -340,8 +340,13 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
   bot.callbackQuery("sess:new", async (ctx) => {
     await ctx.answerCallbackQuery();
     const userId = ctx.from!.id;
-    const label = await ctx.app.runner.createFreshSession(userId);
-    await ctx.reply(`새 세션: ${label}`);
+    try {
+      const label = await ctx.app.runner.createFreshSession(userId);
+      await ctx.reply(`✅ 새 세션: ${label}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await ctx.reply(`❌ 새 세션 실패:\n${msg.slice(0, 3500)}`);
+    }
   });
 
   bot.callbackQuery(/^sess:select:(.+)$/, async (ctx) => {

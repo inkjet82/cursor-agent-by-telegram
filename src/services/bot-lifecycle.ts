@@ -1,18 +1,23 @@
-import { spawn } from "node:child_process";
 import type { Api } from "grammy";
 import type { AppContext } from "../context.js";
-import { getAllowedChatIds, PROJECT_ROOT } from "../env.js";
+import { getAllowedChatIds } from "../env.js";
 
 export function formatStartupMessage(
   modelId: string,
-  sessionLabel?: string,
+  opts?: {
+    sessionLabel?: string;
+    workspaceAlias?: string;
+    workspacePath?: string;
+  },
 ): string {
   const when = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
   return [
     "✅ 봇이 재시작되었습니다.",
     `시각: ${when}`,
+    `워크스페이스: ${opts?.workspaceAlias ?? "(미등록)"}`,
+    `실행 경로: ${opts?.workspacePath ?? "(없음)"}`,
     `모델: ${modelId}`,
-    `세션: ${sessionLabel ?? "(없음)"}`,
+    `세션: ${opts?.sessionLabel ?? "(없음)"}`,
   ].join("\n");
 }
 
@@ -35,20 +40,18 @@ export async function notifyBotStarted(
       );
       sessionLabel = session?.label;
     }
-    const text = formatStartupMessage(state.modelId, sessionLabel);
-    await api.sendMessage(chatId, text).catch((err) => {
+    const sessionWarn = await app.runner.validateActiveSession(userId);
+    const lines = [
+      formatStartupMessage(state.modelId, {
+        sessionLabel,
+        workspaceAlias: state.workspaceAlias,
+        workspacePath: state.workspacePath,
+      }),
+      ...(sessionWarn ? [sessionWarn] : []),
+    ];
+    await api.sendMessage(chatId, lines.join("\n")).catch((err) => {
       console.warn(`startup notify failed for ${chatId}:`, err);
     });
   }
 }
 
-/** 빌드 후 PM2 재시작 (현재 프로세스는 PM2가 교체함) */
-export function schedulePm2Restart(): void {
-  const cmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  const child = spawn(cmd, ["run", "pm2:restart"], {
-    cwd: PROJECT_ROOT,
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-}

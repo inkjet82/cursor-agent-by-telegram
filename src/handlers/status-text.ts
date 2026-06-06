@@ -52,5 +52,5 @@ export function formatHelp(): string {
 /new — 새 세션
 /models — agent CLI 모델 목록
 /usage — Cursor 포함 사용량·모델별 통계 (CURSOR_SESSION_TOKEN)
-/restart — 빌드 성공 후 PM2 재시작 (기동 시 텔레그램 알림)`;
+/restart — 빌드 (실패 시 자동 수정 최대 2회) 후 PM2 재시작`;
 }

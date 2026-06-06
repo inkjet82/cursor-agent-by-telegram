@@ -24,6 +24,14 @@ function isActiveRunConflict(err: unknown): boolean {
   return false;
 }
 
+function isAgentMissingError(err: unknown): boolean {
+  if (err instanceof CursorAgentError && /not found/i.test(err.message)) {
+    return true;
+  }
+  if (err instanceof Error && /not found/i.test(err.message)) return true;
+  return false;
+}
+
 export interface SdkRunOptions {
   userId: number;
   prompt: string;
@@ -54,20 +62,58 @@ export class CursorSdkRunner {
     return buildModelSelection(this.modelCatalog, this.modelConfig, state);
   }
 
-  async ensureSession(userId: number, state: UserState): Promise<{
-    sessionId: string;
-    agentId: string;
-  }> {
+  /** 기동 시 stale 세션 정리; 경고 문구 반환(있으면) */
+  async validateActiveSession(userId: number): Promise<string | undefined> {
+    const state = await this.userStore.get(userId);
+    if (!state.activeSessionId) return undefined;
+
+    const session = await this.sessionStore.getById(
+      userId,
+      state.activeSessionId,
+    );
+    if (!session) {
+      await this.userStore.update(userId, { activeSessionId: undefined });
+      return "활성 세션 기록이 없어 해제했습니다. /new 권장.";
+    }
+
+    try {
+      const probe = await this.resumeAgent(userId, state, session.agentId);
+      await probe[Symbol.asyncDispose]();
+      return undefined;
+    } catch (err) {
+      if (!isAgentMissingError(err)) return undefined;
+      await this.sessionStore.remove(userId, session.id);
+      await this.userStore.update(userId, { activeSessionId: undefined });
+      return "로컬 에이전트가 없어 세션을 초기화했습니다. /new 권장.";
+    }
+  }
+
+  private async purgeActiveSession(
+    userId: number,
+    state: UserState,
+  ): Promise<UserState> {
     if (state.activeSessionId) {
-      const existing = await this.sessionStore.getById(
+      const session = await this.sessionStore.getById(
         userId,
         state.activeSessionId,
       );
-      if (existing && existing.workspacePath === state.workspacePath) {
-        return { sessionId: existing.id, agentId: existing.agentId };
+      if (session) {
+        await this.safeClearRunsForAgent(
+          session.agentId,
+          session.workspacePath,
+        );
+        await this.sessionStore.remove(userId, state.activeSessionId);
       }
     }
+    await this.userStore.update(userId, { activeSessionId: undefined });
+    return this.userStore.get(userId);
+  }
 
+  /** 세션 저장 후 dispose 하지 않은 에이전트 반환 (호출자가 dispose) */
+  private async createBoundAgent(
+    userId: number,
+    state: UserState,
+  ): Promise<SDKAgent> {
     const model = await this.modelFor(state);
     const agent = await Agent.create({
       apiKey: this.env.CURSOR_API_KEY,
@@ -77,22 +123,13 @@ export class CursorSdkRunner {
         settingSources: state.skillSettingSources,
       },
     });
-
-    try {
-      const record = await this.sessionStore.create(
-        userId,
-        agent.agentId,
-        state.workspacePath,
-      );
-      await this.userStore.update(userId, {
-        activeSessionId: record.id,
-      });
-      await agent[Symbol.asyncDispose]();
-      return { sessionId: record.id, agentId: record.agentId };
-    } catch (e) {
-      await agent[Symbol.asyncDispose]();
-      throw e;
-    }
+    const record = await this.sessionStore.create(
+      userId,
+      agent.agentId,
+      state.workspacePath,
+    );
+    await this.userStore.update(userId, { activeSessionId: record.id });
+    return agent;
   }
 
   private sendToAgent(
@@ -116,6 +153,18 @@ export class CursorSdkRunner {
     }
     await this.userStore.update(userId, { activeSessionId: undefined });
     return this.userStore.get(userId);
+  }
+
+  async safeClearRunsForAgent(
+    agentId: string,
+    workspacePath: string,
+  ): Promise<boolean> {
+    try {
+      return await this.clearRunsForAgent(agentId, workspacePath);
+    } catch (err) {
+      if (isAgentMissingError(err)) return false;
+      throw err;
+    }
   }
 
   async clearRunsForAgent(
@@ -153,7 +202,10 @@ export class CursorSdkRunner {
       state.activeSessionId,
     );
     if (!session) return false;
-    return this.clearRunsForAgent(session.agentId, state.workspacePath);
+    return this.safeClearRunsForAgent(
+      session.agentId,
+      session.workspacePath,
+    );
   }
 
   async clearStaleActiveRun(userId: number, workspacePath: string): Promise<boolean> {
@@ -165,10 +217,41 @@ export class CursorSdkRunner {
   }
 
   async createFreshSession(userId: number, state: UserState): Promise<SessionRecord> {
-    await this.clearRunsForActiveSession(userId, state);
+    const cleared = await this.purgeActiveSession(userId, state);
+    const agent = await this.createBoundAgent(userId, cleared);
+    const agentId = agent.agentId;
+    await agent[Symbol.asyncDispose]();
 
+    const after = await this.userStore.get(userId);
+    const sessionId = after.activeSessionId;
+    if (!sessionId) {
+      throw new Error("세션을 저장하지 못했습니다.");
+    }
+
+    try {
+      const probe = await this.resumeAgent(userId, after, agentId);
+      await probe[Symbol.asyncDispose]();
+    } catch (err) {
+      await this.sessionStore.remove(userId, sessionId);
+      await this.userStore.update(userId, { activeSessionId: undefined });
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `로컬 Cursor 에이전트에 연결할 수 없습니다. Cursor IDE 실행·로그인을 확인하세요.\n${detail}`,
+      );
+    }
+
+    const record = await this.sessionStore.getById(userId, sessionId);
+    if (!record) throw new Error("세션 기록을 찾을 수 없습니다.");
+    return record;
+  }
+
+  private async resumeAgent(
+    userId: number,
+    state: UserState,
+    agentId: string,
+  ): Promise<SDKAgent> {
     const model = await this.modelFor(state);
-    const agent = await Agent.create({
+    return Agent.resume(agentId, {
       apiKey: this.env.CURSOR_API_KEY,
       model,
       local: {
@@ -176,61 +259,44 @@ export class CursorSdkRunner {
         settingSources: state.skillSettingSources,
       },
     });
+  }
 
-    try {
-      const record = await this.sessionStore.create(
-        userId,
-        agent.agentId,
-        state.workspacePath,
-      );
-      await this.userStore.update(userId, { activeSessionId: record.id });
-      return record;
-    } finally {
-      await agent[Symbol.asyncDispose]();
-    }
+  private async recoverMissingAgent(
+    userId: number,
+    state: UserState,
+  ): Promise<SDKAgent> {
+    const cleared = await this.purgeActiveSession(userId, state);
+    return this.createBoundAgent(userId, cleared);
   }
 
   private async openAgent(
     userId: number,
     state: UserState,
   ): Promise<SDKAgent> {
-    const { agentId } = await this.ensureSession(userId, state);
-    try {
-      const model = await this.modelFor(state);
-      return await Agent.resume(agentId, {
-        apiKey: this.env.CURSOR_API_KEY,
-        model,
-        local: {
-          cwd: state.workspacePath,
-          settingSources: state.skillSettingSources,
-        },
-      });
-    } catch (err) {
-      if (err instanceof CursorAgentError) {
-        const session = await this.sessionStore.getById(
-          userId,
-          state.activeSessionId!,
-        );
-        if (session) {
-          await this.sessionStore.remove(userId, session.id);
+    if (state.activeSessionId) {
+      const existing = await this.sessionStore.getById(
+        userId,
+        state.activeSessionId,
+      );
+      if (existing) {
+        if (existing.workspacePath !== state.workspacePath) {
+          await this.userStore.update(userId, { activeSessionId: undefined });
+        } else {
+          try {
+            return await this.resumeAgent(userId, state, existing.agentId);
+          } catch (err) {
+            if (!isAgentMissingError(err)) throw err;
+            await this.sessionStore.remove(userId, existing.id);
+            await this.userStore.update(userId, { activeSessionId: undefined });
+          }
         }
+      } else {
         await this.userStore.update(userId, { activeSessionId: undefined });
-        const fresh = await this.ensureSession(
-          userId,
-          await this.userStore.get(userId),
-        );
-        const model = await this.modelFor(state);
-        return Agent.resume(fresh.agentId, {
-          apiKey: this.env.CURSOR_API_KEY,
-          model,
-          local: {
-            cwd: state.workspacePath,
-            settingSources: state.skillSettingSources,
-          },
-        });
       }
-      throw err;
     }
+
+    const fresh = await this.userStore.get(userId);
+    return this.createBoundAgent(userId, fresh);
   }
 
   async run(opts: SdkRunOptions): Promise<{
@@ -260,13 +326,23 @@ export class CursorSdkRunner {
         } catch (sendErr) {
           await agent[Symbol.asyncDispose]().catch(() => {});
           agent = undefined;
+          if (isAgentMissingError(sendErr)) {
+            state = await this.userStore.get(opts.userId);
+            agent = await this.recoverMissingAgent(opts.userId, state);
+            state = await this.userStore.get(opts.userId);
+            run = await this.sendToAgent(agent, fullPrompt, opts.mode, force);
+            break;
+          }
           if (!isActiveRunConflict(sendErr) || attempt === 2) throw sendErr;
 
           const session = state.activeSessionId
             ? await this.sessionStore.getById(opts.userId, state.activeSessionId)
             : undefined;
           if (session) {
-            await this.clearRunsForAgent(session.agentId, state.workspacePath);
+            await this.safeClearRunsForAgent(
+              session.agentId,
+              state.workspacePath,
+            );
           }
           if (attempt === 0) continue;
 
