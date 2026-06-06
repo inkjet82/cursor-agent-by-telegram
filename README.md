@@ -50,15 +50,18 @@ npm run build
 npm start
 ```
 
-## Windows 상시 실행 (PM2)
+## Windows 상시 실행 (PM2 + bat)
 
-```bash
-npm install -g pm2
-npm run pm2:start
-pm2 save
-```
+Windows에서는 `pm2 startup`이 동작하지 않습니다. **bat + 시작 프로그램** 방식을 사용합니다.
 
-또는 작업 스케줄러로 로그온 시 `npm start` 실행. PC 절전 시 봇이 응답하지 않습니다.
+1. 최초 1회: 프로젝트 폴더에서 `start-bot.bat` 더블클릭 (빌드 후 PM2 기동)
+2. 재부팅 후 자동 기동: `register-windows-startup.bat` 실행 → Startup 폴더에 등록
+3. 수동 재시작: `start-bot.bat` 또는 텔레그램 `/restart`
+4. 중지: `stop-bot.bat`
+
+로그: `data/pm2-out.log`, `data/pm2-error.log`, 재부팅 기동 로그 `data/startup.log`
+
+PC 절전 시 봇이 응답하지 않습니다.
 
 ## 사용 요약
 
