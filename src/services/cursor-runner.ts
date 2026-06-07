@@ -19,6 +19,12 @@ import {
   tryDeliverFilesForTurn,
   wantsFileDelivery,
 } from "./telegram-file-delivery.js";
+import { resolvePlanBody } from "./plan-content-resolver.js";
+import {
+  assessDangerTexts,
+  formatDangerBlockMessage,
+  loadDangerFilterConfig,
+} from "./danger-filter.js";
 
 export interface RunOptions {
   userId: number;
@@ -39,7 +45,8 @@ export interface RunOptions {
 }
 
 const PLAN_DRAFT_FOOTER =
-  "\n\n📝 Plan 초안입니다. 수정은 계속 말씀해 주세요.\n완료: /done 또는 [계획 완료] 버튼";
+  "\n\n📝 [계획 수정] 또는 메시지로 수정 · [계획 실행]으로 구현";
+const MAX_PLAN_TELEGRAM_CHUNKS = 5;
 
 export class CursorRunner {
   private sdk: CursorSdkRunner;
@@ -105,6 +112,38 @@ export class CursorRunner {
     }
   }
 
+  private async guardDanger(
+    state: UserState,
+    chatId: number,
+    api: Api,
+    ...texts: string[]
+  ): Promise<boolean> {
+    if (!state.dangerDetection) return false;
+    const config = await loadDangerFilterConfig();
+    const assessment = assessDangerTexts(texts, config);
+    if (!assessment.blocked) return false;
+    await api.sendMessage(chatId, formatDangerBlockMessage(assessment));
+    return true;
+  }
+
+  private async sendPlanDraftToTelegram(
+    api: Api,
+    chatId: number,
+    statusId: number,
+    body: string,
+  ): Promise<void> {
+    const { planDraftKeyboard } = await import("../keyboards/inline.js");
+    const chunks = splitMessage(body, 3800).slice(0, MAX_PLAN_TELEGRAM_CHUNKS);
+    const first = `📋 Plan 초안\n\n${chunks[0] ?? "(비어 있음)"}`;
+    await api.editMessageText(chatId, statusId, first.slice(0, 4096));
+    for (let i = 1; i < chunks.length; i++) {
+      await api.sendMessage(chatId, chunks[i]!);
+    }
+    await api.sendMessage(chatId, PLAN_DRAFT_FOOTER.trim(), {
+      reply_markup: planDraftKeyboard(),
+    });
+  }
+
   async executeApprovedPlan(
     userId: number,
     chatId: number,
@@ -112,6 +151,11 @@ export class CursorRunner {
     originalPrompt: string,
     planSummary: string,
   ): Promise<void> {
+    const state = await this.userStore.get(userId);
+    if (await this.guardDanger(state, chatId, api, originalPrompt, planSummary)) {
+      return;
+    }
+
     const execPrompt = `Implement the following plan for the original request.
 
 Original request:
@@ -131,7 +175,8 @@ ${planSummary}`;
     });
   }
 
-  async finalizePlanDraft(
+  /** Plan 초안 → Agent 실행 ([계획 실행], /done) */
+  async executePlanDraft(
     userId: number,
     chatId: number,
     api: Api,
@@ -140,24 +185,26 @@ ${planSummary}`;
     const draft = state.planDraft;
     if (!draft) return false;
 
-    const session = state.activeSessionId
-      ? await this.sessionStore.getById(userId, state.activeSessionId)
-      : undefined;
+    if (
+      await this.guardDanger(
+        state,
+        chatId,
+        api,
+        draft.originalPrompt,
+        draft.summary,
+      )
+    ) {
+      return true;
+    }
 
-    const summary = draft.summary.slice(0, 3500);
-    const msg = await api.sendMessage(chatId, `✅ 계획 완료\n\n${summary}`, {
-      reply_markup: (await import("../keyboards/inline.js")).planApprovalKeyboard(),
-    });
-
-    await this.userStore.update(userId, {
-      planDraft: undefined,
-      pendingPlanApproval: {
-        sessionId: session?.id ?? "sdk",
-        originalPrompt: draft.originalPrompt,
-        planSummary: draft.summary,
-        planMessageId: msg.message_id,
-      },
-    });
+    await this.userStore.update(userId, { planDraft: undefined });
+    await this.executeApprovedPlan(
+      userId,
+      chatId,
+      api,
+      draft.originalPrompt,
+      draft.summary,
+    );
     return true;
   }
 
@@ -171,6 +218,8 @@ ${planSummary}`;
       );
       return;
     }
+
+    let state = await this.userStore.get(userId);
 
     if (
       mode === "agent" &&
@@ -186,7 +235,13 @@ ${planSummary}`;
       return;
     }
 
-    let state = await this.userStore.get(userId);
+    if (
+      mode === "agent" &&
+      (opts.directAgent || opts.skipPlanFirst) &&
+      (await this.guardDanger(state, chatId, api, prompt))
+    ) {
+      return;
+    }
     const pendingSkills = await this.getPendingSkills(state);
     if (pendingSkills.length > 0) {
       await this.userStore.update(userId, { pendingSkillNames: [] });
@@ -217,6 +272,7 @@ ${planSummary}`;
 
     const statusMsg = await api.sendMessage(chatId, "⏳ Cursor Agent 시작 중…");
     const statusId = opts.statusMessageId ?? statusMsg.message_id;
+    const runStartedAt = Date.now();
     await api.sendChatAction(chatId, "typing").catch(() => {});
 
     const promptPrefix = wantsFileDelivery(prompt)
@@ -263,6 +319,12 @@ ${planSummary}`;
       }
 
       if (mode === "plan" && !opts.skipPlanStore) {
+        const resolved = await resolvePlanBody(
+          state.workspacePath,
+          finalText,
+          runStartedAt,
+        );
+        const planBody = resolved.body;
         const existingDraft = opts.planRevision
           ? (await this.userStore.get(userId)).planDraft
           : undefined;
@@ -270,16 +332,16 @@ ${planSummary}`;
         await this.userStore.update(userId, {
           planDraft: {
             originalPrompt,
-            summary: finalText,
+            summary: planBody,
             updatedAt: new Date().toISOString(),
           },
           pendingPlanApproval: undefined,
         });
-        const body = (finalText + PLAN_DRAFT_FOOTER).slice(0, 4000);
-        const { planDraftKeyboard } = await import("../keyboards/inline.js");
-        await api.editMessageText(chatId, statusId, body, {
-          reply_markup: planDraftKeyboard(),
-        });
+        await this.sendPlanDraftToTelegram(api, chatId, statusId, planBody);
+        if (resolved.source === "file" && resolved.filePath) {
+          const name = resolved.filePath.split(/[/\\]/).pop() ?? "plan.md";
+          await api.sendMessage(chatId, `📎 Plan 파일: ${name}`);
+        }
       } else if (opts.attachPlanButtons && mode === "plan" && !opts.skipPlanStore) {
         const session = state.activeSessionId
           ? await this.sessionStore.getById(userId, state.activeSessionId)

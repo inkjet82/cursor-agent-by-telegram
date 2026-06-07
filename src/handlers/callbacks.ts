@@ -28,29 +28,19 @@ import {
 } from "./model-params-ui.js";
 
 export function registerCallbacks(bot: Bot<BotContext>): void {
-  bot.callbackQuery(/^plan:(exec|cancel|finalize)$/, async (ctx) => {
+  bot.callbackQuery(/^plan:(exec|cancel|revise)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const userId = ctx.from!.id;
     const action = ctx.match![1];
 
-    if (action === "finalize") {
-      const ok = await ctx.app.runner.finalizePlanDraft(
-        userId,
-        ctx.chat!.id,
-        ctx.api,
-      );
-      if (!ok) {
-        await ctx.reply("완료할 Plan 초안이 없습니다. /plan 으로 시작하세요.");
+    if (action === "revise") {
+      const state = await ctx.app.userStore.get(userId);
+      if (!state.planDraft) {
+        await ctx.reply("수정할 Plan 초안이 없습니다. /plan 으로 시작하세요.");
         return;
       }
-      await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
-      return;
-    }
-
-    const state = await ctx.app.userStore.get(userId);
-    const pending = state.pendingPlanApproval;
-    if (!pending) {
-      await ctx.reply("대기 중인 Plan이 없습니다. /done 으로 계획을 완료하세요.");
+      await ctx.app.userStore.update(userId, { awaitingPromptMode: "plan" });
+      await ctx.reply("수정할 내용을 입력하세요:");
       return;
     }
 
@@ -59,13 +49,33 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
         pendingPlanApproval: undefined,
         planDraft: undefined,
       });
-      await ctx.editMessageReplyMarkup({ reply_markup: undefined });
-      await ctx.reply("Plan 실행을 취소했습니다.");
+      await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+      await ctx.reply("Plan을 취소했습니다.");
+      return;
+    }
+
+    const state = await ctx.app.userStore.get(userId);
+    if (state.planDraft) {
+      await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+      const ok = await ctx.app.runner.executePlanDraft(
+        userId,
+        ctx.chat!.id,
+        ctx.api,
+      );
+      if (!ok) {
+        await ctx.reply("실행할 Plan 초안이 없습니다.");
+      }
+      return;
+    }
+
+    const pending = state.pendingPlanApproval;
+    if (!pending) {
+      await ctx.reply("실행할 Plan이 없습니다. /plan 으로 계획을 만드세요.");
       return;
     }
 
     await ctx.app.userStore.update(userId, { pendingPlanApproval: undefined });
-    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
 
     await ctx.app.runner.executeApprovedPlan(
       userId,
@@ -76,7 +86,7 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     );
   });
 
-  bot.callbackQuery(/^set:(mode|workspace|model|modelparams|skills|force|sessions|close)$/, async (ctx) => {
+  bot.callbackQuery(/^set:(mode|workspace|model|modelparams|skills|force|danger|sessions|close)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const action = ctx.match![1];
     const userId = ctx.from!.id;
@@ -143,6 +153,13 @@ export function registerCallbacks(bot: Bot<BotContext>): void {
     if (action === "force") {
       await ctx.app.userStore.update(userId, { force: !state.force });
       await ctx.reply(`Force: ${!state.force ? "ON" : "OFF"}`);
+      return;
+    }
+    if (action === "danger") {
+      await ctx.app.userStore.update(userId, {
+        dangerDetection: !state.dangerDetection,
+      });
+      await ctx.reply(`위험감지: ${!state.dangerDetection ? "ON" : "OFF"}`);
       return;
     }
     if (action === "sessions") {

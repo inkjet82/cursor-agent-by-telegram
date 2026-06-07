@@ -7,7 +7,9 @@ export function planApprovalKeyboard(): InlineKeyboard {
 }
 
 export function planDraftKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("계획 완료", "plan:finalize");
+  return new InlineKeyboard()
+    .text("계획 수정", "plan:revise")
+    .text("계획 실행", "plan:exec");
 }
 
 export function settingsMenuKeyboard(): InlineKeyboard {
@@ -21,6 +23,8 @@ export function settingsMenuKeyboard(): InlineKeyboard {
     .text("스킬", "set:skills")
     .row()
     .text("Force", "set:force")
+    .text("위험감지", "set:danger")
+    .row()
     .text("세션", "set:sessions")
     .row()
     .text("닫기", "set:close");

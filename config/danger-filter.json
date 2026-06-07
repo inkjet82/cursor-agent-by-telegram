@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "disk_format",
+      "label": "디스크 포맷/초기화",
+      "patterns": [
+        "\\bformat\\b",
+        "포맷",
+        "diskpart",
+        "clean all",
+        "초기화",
+        "wipedrive",
+        "mkfs\\."
+      ]
+    },
+    {
+      "id": "mass_delete",
+      "label": "대량/루트 삭제",
+      "patterns": [
+        "rm\\s+-rf\\s+[/~]",
+        "rm\\s+-rf\\s+\\.",
+        "del\\s+/[fq]",
+        "Remove-Item\\s+-Recurse\\s+-Force",
+        "rd\\s+/s",
+        "rmdir\\s+/s",
+        "전부\\s*삭제",
+        "다\\s*지워",
+        "모두\\s*삭제"
+      ]
+    },
+    {
+      "id": "system_destruct",
+      "label": "시스템 파괴",
+      "patterns": [
+        "C:\\\\Windows",
+        "/etc/passwd",
+        "bcdedit",
+        "shutdown.*/[fs]",
+        "registry.*delete",
+        "레지스트리.*삭제",
+        "컴퓨터.*파괴",
+        "시스템.*삭제"
+      ]
+    }
+  ]
+}

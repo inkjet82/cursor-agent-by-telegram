@@ -68,9 +68,10 @@ PC 절전 시 봇이 응답하지 않습니다.
 | 동작 | 방법 |
 |------|------|
 | 질문 (Ask) | `/ask` 또는 Ask 버튼 |
-| Plan + 승인 | `/plan` → [실행] 또는 `/approve` |
-| Agent (Plan 후) | `/agent` (기본) |
-| Agent 즉시 | `/agent!` 또는 `/agent --force` |
+| Plan | `/plan` → [계획 수정] / [계획 실행] 또는 `/done` |
+| Agent (기본) | 일반 메시지 또는 `/agent` (즉시 실행) |
+| Agent 강제 | `/agent!` 또는 `/agent --force` |
+| 위험감지 | 설정 → 위험감지 (기본 ON) |
 | 워크스페이스 | `/workspaces`, `/workspace C:\path` |
 | 모델 목록 | `/models` |
 | 취소 | `/cancel` |
@@ -78,13 +79,15 @@ PC 절전 시 봇이 응답하지 않습니다.
 
 ### Plan → Agent 흐름
 
-1. `/plan 기능 추가해줘` → Plan **초안** (실행 버튼 없음, [계획 완료]만)
-2. 수정이 필요하면 같은 Plan 모드로 추가 메시지
-3. `/done` 또는 **[계획 완료]** → `✅ 계획 완료` + **[실행]** 버튼
-4. **실행** 또는 `/approve` → Agent가 구현
-5. 기본 모드 **Agent** + 일반 텍스트 → Plan 없이 **즉시** Agent
-6. `/agent` (명령) → Plan 초안 후 `/done` → 실행 (안전 모드)
-7. `/agent!` 또는 `SKIP_PLAN_APPROVAL=true` → Plan 생략 즉시 Agent
+1. `/plan 기능 추가해줘` → Plan **초안** 본문 표시 (`.plan.md` 파일 내용 자동 읽기)
+2. **[계획 수정]** 또는 Plan 모드 메시지로 초안 수정
+3. **[계획 실행]** 또는 `/done` → Agent가 구현 (위험감지 통과 시)
+4. 기본 모드 **Agent** + 일반 텍스트 → Plan 없이 **즉시** Agent
+5. `/agent!` 또는 `SKIP_PLAN_APPROVAL=true` → Plan 생략 즉시 Agent
+
+### 위험감지 (기본 ON)
+
+`config/danger-filter.json` 규칙으로 포맷·대량삭제·시스템 파괴 프롬프트를 Agent 실행 전 차단합니다. 설정 메뉴 **위험감지**로 OFF 가능 (비권장).
 
 ### 스킬
 
@@ -107,5 +110,5 @@ Telegram → grammY (polling) → JobQueue → CursorSdkRunner (@cursor/sdk)
 
 - `TELEGRAM_CHAT_ID` allowlist 외 채팅은 무시
 - `config/workspaces.json`의 `roots` 밖 경로 거부
-- Agent 모드는 로컬 파일·셸 변경 가능 — Plan 승인 또는 `/agent!` 사용 권장
+- Agent 모드는 로컬 파일·셸 변경 가능 — 위험감지 ON 유지·Plan 후 실행 권장
 - `.env`를 git에 커밋하지 마세요

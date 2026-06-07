@@ -63,6 +63,10 @@ export class UserStateStore {
       s.modelParams = [];
       changed = true;
     }
+    if (s.dangerDetection === undefined) {
+      s.dangerDetection = true;
+      changed = true;
+    }
     if (this.migrateState(s)) changed = true;
     if (changed) await this.saveAll(all);
     return s;

@@ -10,6 +10,7 @@ interface BotDefaults {
   modelId: string;
   skillSettingSources: UserState["skillSettingSources"];
   force: boolean;
+  dangerDetection: boolean;
 }
 
 export async function loadWorkspacesConfig(): Promise<WorkspacesConfig> {
@@ -27,6 +28,7 @@ export async function loadBotDefaults(): Promise<BotDefaults> {
       modelId: "composer-2",
       skillSettingSources: ["project", "user"],
       force: false,
+      dangerDetection: true,
     },
   );
 }
@@ -49,6 +51,7 @@ export async function defaultUserState(env: Env): Promise<UserState> {
     modelId,
     modelParams: paramsForModel(modelConfig, modelId),
     force: defaults.force,
+    dangerDetection: defaults.dangerDetection ?? true,
     pendingSkillNames: [],
     skillSettingSources: defaults.skillSettingSources,
   };

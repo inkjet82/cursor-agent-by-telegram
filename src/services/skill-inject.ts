@@ -8,7 +8,7 @@ const MODE_PREFIX: Record<Exclude<AgentMode, "smart">, string> = {
 `,
   plan: `[MODE: PLAN — Produce an implementation plan with steps and risks. Do NOT modify files or execute write/shell operations yet.
 
-The user may revise this plan in follow-up messages. Do NOT write "## 계획 완료" — the Telegram bot finalizes plans only when the user sends /done.]
+The user may revise this plan in follow-up messages. Do NOT auto-implement — the Telegram bot runs Agent only when the user taps [계획 실행] or sends /done.]
 
 `,
   agent: `[MODE: AGENT — Implement the request in the workspace. Run tools as needed to complete the task.]

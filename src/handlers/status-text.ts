@@ -23,6 +23,7 @@ export function formatStatus(
     `실행 경로(cwd): ${state.workspacePath}`,
     `모델: ${state.modelId} (${paramLine})`,
     `Force: ${state.force ? "ON" : "OFF"}`,
+    `위험감지: ${state.dangerDetection !== false ? "ON" : "OFF"}`,
     `다음 메시지 스킬: ${state.pendingSkillNames.length ? state.pendingSkillNames.join(", ") : "(없음)"}`,
     `스킬 로딩: ${state.skillSettingSources.join(", ")}`,
     `세션: ${sessionLabel ?? "(없음)"}`,
@@ -35,13 +36,13 @@ export function formatStatus(
 export function formatHelp(): string {
   return `📖 Cursor Telegram Bot
 
-• 기본 모드 Agent + 일반 메시지 → Plan 없이 즉시 Agent
-• /plan → Plan 초안 (실행 버튼 없음) · 수정 후 /done
-• /done → Plan 완료 → [실행] 버튼
+• 기본 모드 Agent + 일반 메시지 → Plan 없이 즉시 Agent (위험감지 ON 시 차단)
+• /plan → Plan 초안 · [계획 수정] / [계획 실행]
+• /done → Plan 초안 즉시 Agent 실행
 • /ask → Ask (읽기 전용)
-• /agent → Plan 초안 후 /done → 실행 (안전)
-• /agent! 또는 /agent --force → Plan 생략 즉시 Agent
-• /approve → [실행] 대기 중이면 Agent 실행 · 초안만 있으면 /done 과 동일
+• /agent → 기본 즉시 Agent · /agent! → Plan 생략 강제
+• /approve → [계획 실행]과 동일 (초안 또는 승인 대기)
+• 설정 → 위험감지: 포맷·대량삭제·시스템 파괴 프롬프트 차단
 
 하단 버튼: Ask, Plan, Agent, 세션, 워크스페이스, 스킬, 설정…
 

@@ -40,9 +40,9 @@ const BOT_COMMANDS = [
   { command: "start", description: "시작 및 키보드" },
   { command: "help", description: "도움말" },
   { command: "ask", description: "Ask 모드 질문" },
-  { command: "plan", description: "Plan 초안 (완료: /done)" },
-  { command: "done", description: "Plan 완료 → 실행 버튼" },
-  { command: "agent", description: "Agent (기본 Plan 후 /done)" },
+  { command: "plan", description: "Plan 초안" },
+  { command: "done", description: "Plan 실행 (/plan:exec)" },
+  { command: "agent", description: "Agent (기본 즉시 실행)" },
   { command: "skills", description: "스킬 목록" },
   { command: "sessions", description: "세션 목록" },
   { command: "new", description: "새 세션" },
@@ -317,7 +317,9 @@ ${text}`;
     const text = commandArgs(ctx, "plan");
     if (!text) {
       await app.userStore.update(ctx.from!.id, { awaitingPromptMode: "plan" });
-      await ctx.reply("Plan 요청을 보내세요.\n완료 후 /done 또는 [계획 완료] 버튼");
+      await ctx.reply(
+        "Plan 요청을 보내세요.\n초안 후 [계획 수정]·[계획 실행] 또는 /done",
+      );
       return;
     }
     await app.userStore.update(ctx.from!.id, { planDraft: undefined });
@@ -326,15 +328,22 @@ ${text}`;
 
   bot.command("done", async (ctx) => {
     const userId = ctx.from!.id;
-    const ok = await app.runner.finalizePlanDraft(userId, ctx.chat!.id, ctx.api);
+    const ok = await app.runner.executePlanDraft(userId, ctx.chat!.id, ctx.api);
     if (!ok) {
-      await ctx.reply("완료할 Plan 초안이 없습니다. /plan 으로 시작하세요.");
+      await ctx.reply("실행할 Plan 초안이 없습니다. /plan 으로 시작하세요.");
     }
   });
 
   bot.command("approve", async (ctx) => {
     const userId = ctx.from!.id;
     const state = await app.userStore.get(userId);
+    if (state.planDraft) {
+      const ok = await app.runner.executePlanDraft(userId, ctx.chat!.id, ctx.api);
+      if (!ok) {
+        await ctx.reply("실행할 Plan 초안이 없습니다.");
+      }
+      return;
+    }
     if (state.pendingPlanApproval) {
       const pending = state.pendingPlanApproval;
       await app.userStore.update(userId, { pendingPlanApproval: undefined });
@@ -347,16 +356,9 @@ ${text}`;
       );
       return;
     }
-    const finalized = await app.runner.finalizePlanDraft(
-      userId,
-      ctx.chat!.id,
-      ctx.api,
+    await ctx.reply(
+      "실행할 Plan이 없습니다. /plan 으로 계획을 만든 뒤 [계획 실행] 또는 /done 하세요.",
     );
-    if (!finalized) {
-      await ctx.reply(
-        "대기 중인 Plan이 없습니다. /plan 으로 계획을 만든 뒤 /done 하세요.",
-      );
-    }
   });
 
   bot.command("models", async (ctx) => {
@@ -422,7 +424,9 @@ ${text}`;
             awaitingPromptMode: "plan",
             planDraft: undefined,
           });
-          await ctx.reply("Plan 요청을 입력하세요.\n완료: /done 또는 [계획 완료]");
+          await ctx.reply(
+            "Plan 요청을 입력하세요.\n초안 후 [계획 수정]·[계획 실행] 또는 /done",
+          );
           return;
         case "Agent":
           await app.userStore.update(userId, { awaitingPromptMode: "agent" });

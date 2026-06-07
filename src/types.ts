@@ -40,12 +40,14 @@ export interface UserState {
   /** Active SDK model params; empty = use env defaults for current modelId */
   modelParams: ModelParam[];
   force: boolean;
+  /** Block destructive prompts before Agent runs (default true) */
+  dangerDetection: boolean;
   activeSessionId?: string;
   /** Skills to inject on the next user message only, then cleared */
   pendingSkillNames: string[];
   skillSettingSources: SettingSource[];
   pendingPlanApproval?: PendingPlanApproval;
-  /** Plan 초안 — /done 전까지 실행 버튼 없음 */
+  /** Plan 초안 — [계획 수정]/[계획 실행] 또는 /done */
   planDraft?: PlanDraft;
   wizard?: UserWizard;
   awaitingPromptMode?: Exclude<AgentMode, "smart">;
