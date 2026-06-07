@@ -78,9 +78,13 @@ PC 절전 시 봇이 응답하지 않습니다.
 
 ### Plan → Agent 흐름
 
-1. `/plan 기능 추가해줘` → Plan 결과 + [실행][취소] 버튼
-2. **실행** 또는 `/approve` → Agent가 구현
-3. `SKIP_PLAN_APPROVAL=true` 이면 `/agent`가 1단계 생략
+1. `/plan 기능 추가해줘` → Plan **초안** (실행 버튼 없음, [계획 완료]만)
+2. 수정이 필요하면 같은 Plan 모드로 추가 메시지
+3. `/done` 또는 **[계획 완료]** → `✅ 계획 완료` + **[실행]** 버튼
+4. **실행** 또는 `/approve` → Agent가 구현
+5. 기본 모드 **Agent** + 일반 텍스트 → Plan 없이 **즉시** Agent
+6. `/agent` (명령) → Plan 초안 후 `/done` → 실행 (안전 모드)
+7. `/agent!` 또는 `SKIP_PLAN_APPROVAL=true` → Plan 생략 즉시 Agent
 
 ### 스킬
 

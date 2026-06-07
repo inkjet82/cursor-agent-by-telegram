@@ -27,11 +27,19 @@ export interface RunOptions {
   mode: Exclude<AgentMode, "smart">;
   api: Api;
   statusMessageId?: number;
+  /** @deprecated use storePlanDraft behavior for plan mode */
   attachPlanButtons?: boolean;
   skipPlanStore?: boolean;
   /** Skip plan-first gate for /agent */
   directAgent?: boolean;
+  /** Internal: agent→plan redirect already happened */
+  skipPlanFirst?: boolean;
+  /** Plan revision — keep originalPrompt from existing draft */
+  planRevision?: boolean;
 }
+
+const PLAN_DRAFT_FOOTER =
+  "\n\n📝 Plan 초안입니다. 수정은 계속 말씀해 주세요.\n완료: /done 또는 [계획 완료] 버튼";
 
 export class CursorRunner {
   private sdk: CursorSdkRunner;
@@ -119,7 +127,38 @@ ${planSummary}`;
       mode: "agent",
       api,
       directAgent: true,
+      skipPlanFirst: true,
     });
+  }
+
+  async finalizePlanDraft(
+    userId: number,
+    chatId: number,
+    api: Api,
+  ): Promise<boolean> {
+    const state = await this.userStore.get(userId);
+    const draft = state.planDraft;
+    if (!draft) return false;
+
+    const session = state.activeSessionId
+      ? await this.sessionStore.getById(userId, state.activeSessionId)
+      : undefined;
+
+    const summary = draft.summary.slice(0, 3500);
+    const msg = await api.sendMessage(chatId, `✅ 계획 완료\n\n${summary}`, {
+      reply_markup: (await import("../keyboards/inline.js")).planApprovalKeyboard(),
+    });
+
+    await this.userStore.update(userId, {
+      planDraft: undefined,
+      pendingPlanApproval: {
+        sessionId: session?.id ?? "sdk",
+        originalPrompt: draft.originalPrompt,
+        planSummary: draft.summary,
+        planMessageId: msg.message_id,
+      },
+    });
+    return true;
   }
 
   async execute(opts: RunOptions): Promise<void> {
@@ -137,13 +176,12 @@ ${planSummary}`;
       mode === "agent" &&
       !opts.directAgent &&
       !this.skipPlanApproval() &&
-      !opts.attachPlanButtons
+      !opts.skipPlanFirst
     ) {
       await this.execute({
         ...opts,
         mode: "plan",
-        attachPlanButtons: true,
-        skipPlanStore: false,
+        skipPlanFirst: true,
       });
       return;
     }
@@ -224,7 +262,25 @@ ${planSummary}`;
         await sdkRun.dispose();
       }
 
-      if (opts.attachPlanButtons && mode === "plan" && !opts.skipPlanStore) {
+      if (mode === "plan" && !opts.skipPlanStore) {
+        const existingDraft = opts.planRevision
+          ? (await this.userStore.get(userId)).planDraft
+          : undefined;
+        const originalPrompt = existingDraft?.originalPrompt ?? prompt;
+        await this.userStore.update(userId, {
+          planDraft: {
+            originalPrompt,
+            summary: finalText,
+            updatedAt: new Date().toISOString(),
+          },
+          pendingPlanApproval: undefined,
+        });
+        const body = (finalText + PLAN_DRAFT_FOOTER).slice(0, 4000);
+        const { planDraftKeyboard } = await import("../keyboards/inline.js");
+        await api.editMessageText(chatId, statusId, body, {
+          reply_markup: planDraftKeyboard(),
+        });
+      } else if (opts.attachPlanButtons && mode === "plan" && !opts.skipPlanStore) {
         const session = state.activeSessionId
           ? await this.sessionStore.getById(userId, state.activeSessionId)
           : undefined;

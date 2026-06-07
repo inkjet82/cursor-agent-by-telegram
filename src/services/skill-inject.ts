@@ -6,7 +6,9 @@ const MODE_PREFIX: Record<Exclude<AgentMode, "smart">, string> = {
   ask: `[MODE: ASK — Read-only exploration. Do NOT modify files or run shell commands that change state. Answer and analyze only.]
 
 `,
-  plan: `[MODE: PLAN — Produce an implementation plan with steps and risks. Do NOT modify files or execute write/shell operations yet.]
+  plan: `[MODE: PLAN — Produce an implementation plan with steps and risks. Do NOT modify files or execute write/shell operations yet.
+
+The user may revise this plan in follow-up messages. Do NOT write "## 계획 완료" — the Telegram bot finalizes plans only when the user sends /done.]
 
 `,
   agent: `[MODE: AGENT — Implement the request in the workspace. Run tools as needed to complete the task.]

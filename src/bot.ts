@@ -40,8 +40,9 @@ const BOT_COMMANDS = [
   { command: "start", description: "시작 및 키보드" },
   { command: "help", description: "도움말" },
   { command: "ask", description: "Ask 모드 질문" },
-  { command: "plan", description: "Plan + 실행 버튼" },
-  { command: "agent", description: "즉시 Agent" },
+  { command: "plan", description: "Plan 초안 (완료: /done)" },
+  { command: "done", description: "Plan 완료 → 실행 버튼" },
+  { command: "agent", description: "Agent (기본 Plan 후 /done)" },
   { command: "skills", description: "스킬 목록" },
   { command: "sessions", description: "세션 목록" },
   { command: "new", description: "새 세션" },
@@ -116,6 +117,15 @@ export function createBot(env: Env, app: BotContext["app"]): Bot<BotContext> {
 
   bot.command("cancel", async (ctx) => {
     const userId = ctx.from!.id;
+    const state = await app.userStore.get(userId);
+    if (state.planDraft || state.pendingPlanApproval) {
+      await app.userStore.update(userId, {
+        planDraft: undefined,
+        pendingPlanApproval: undefined,
+      });
+      await ctx.reply("Plan 초안·승인 대기를 취소했습니다.");
+      return;
+    }
     const job = app.jobQueue.getJob(userId);
     if (job?.cancel) {
       await job.cancel();
@@ -263,15 +273,33 @@ export function createBot(env: Env, app: BotContext["app"]): Bot<BotContext> {
     await commitSkillPicker(app.userStore, userId);
     const state = await app.userStore.get(userId);
     const resolved = resolveModeForText(text, state.defaultMode, explicit);
-    const attachPlan = resolved === "plan";
+
+    let prompt = text;
+    let planRevision = false;
+    if (resolved === "plan" && state.planDraft) {
+      planRevision = true;
+      prompt = `Continue refining this implementation plan.
+
+Previous draft:
+${state.planDraft.summary}
+
+New instruction:
+${text}`;
+    }
+
+    const agentDirect =
+      resolved === "agent" &&
+      (directAgent ||
+        (state.defaultMode === "agent" && explicit !== "agent"));
+
     await app.runner.execute({
       userId,
       chatId: ctx.chat!.id,
-      prompt: text,
+      prompt,
       mode: resolved,
       api: ctx.api,
-      attachPlanButtons: attachPlan,
-      directAgent: resolved === "agent" ? directAgent : undefined,
+      directAgent: agentDirect,
+      planRevision,
     });
   }
 
@@ -289,28 +317,46 @@ export function createBot(env: Env, app: BotContext["app"]): Bot<BotContext> {
     const text = commandArgs(ctx, "plan");
     if (!text) {
       await app.userStore.update(ctx.from!.id, { awaitingPromptMode: "plan" });
-      await ctx.reply("Plan 요청을 보내세요:");
+      await ctx.reply("Plan 요청을 보내세요.\n완료 후 /done 또는 [계획 완료] 버튼");
       return;
     }
+    await app.userStore.update(ctx.from!.id, { planDraft: undefined });
     await runUserPrompt(ctx, text, "plan");
+  });
+
+  bot.command("done", async (ctx) => {
+    const userId = ctx.from!.id;
+    const ok = await app.runner.finalizePlanDraft(userId, ctx.chat!.id, ctx.api);
+    if (!ok) {
+      await ctx.reply("완료할 Plan 초안이 없습니다. /plan 으로 시작하세요.");
+    }
   });
 
   bot.command("approve", async (ctx) => {
     const userId = ctx.from!.id;
     const state = await app.userStore.get(userId);
-    const pending = state.pendingPlanApproval;
-    if (!pending) {
-      await ctx.reply("대기 중인 Plan이 없습니다. /plan 으로 계획을 만드세요.");
+    if (state.pendingPlanApproval) {
+      const pending = state.pendingPlanApproval;
+      await app.userStore.update(userId, { pendingPlanApproval: undefined });
+      await app.runner.executeApprovedPlan(
+        userId,
+        ctx.chat!.id,
+        ctx.api,
+        pending.originalPrompt,
+        pending.planSummary,
+      );
       return;
     }
-    await app.userStore.update(userId, { pendingPlanApproval: undefined });
-    await app.runner.executeApprovedPlan(
+    const finalized = await app.runner.finalizePlanDraft(
       userId,
       ctx.chat!.id,
       ctx.api,
-      pending.originalPrompt,
-      pending.planSummary,
     );
+    if (!finalized) {
+      await ctx.reply(
+        "대기 중인 Plan이 없습니다. /plan 으로 계획을 만든 뒤 /done 하세요.",
+      );
+    }
   });
 
   bot.command("models", async (ctx) => {
@@ -372,8 +418,11 @@ export function createBot(env: Env, app: BotContext["app"]): Bot<BotContext> {
           await ctx.reply("Ask 질문을 입력하세요:");
           return;
         case "Plan":
-          await app.userStore.update(userId, { awaitingPromptMode: "plan" });
-          await ctx.reply("Plan 요청을 입력하세요:");
+          await app.userStore.update(userId, {
+            awaitingPromptMode: "plan",
+            planDraft: undefined,
+          });
+          await ctx.reply("Plan 요청을 입력하세요.\n완료: /done 또는 [계획 완료]");
           return;
         case "Agent":
           await app.userStore.update(userId, { awaitingPromptMode: "agent" });

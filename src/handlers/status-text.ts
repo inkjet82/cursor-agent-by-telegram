@@ -35,20 +35,17 @@ export function formatStatus(
 export function formatHelp(): string {
   return `📖 Cursor Telegram Bot
 
-• 그냥 메시지 → 기본 모드(초기 Ask)로 실행
-• /plan → Plan (CLI, 읽기 전용) + [실행][취소] 버튼
-• /ask → Ask (CLI, 읽기 전용)
-• /agent → 기본 Plan 확인 후 실행 (SKIP_PLAN_APPROVAL=true 면 즉시)
+• 기본 모드 Agent + 일반 메시지 → Plan 없이 즉시 Agent
+• /plan → Plan 초안 (실행 버튼 없음) · 수정 후 /done
+• /done → Plan 완료 → [실행] 버튼
+• /ask → Ask (읽기 전용)
+• /agent → Plan 초안 후 /done → 실행 (안전)
 • /agent! 또는 /agent --force → Plan 생략 즉시 Agent
-• /approve → 마지막 Plan 승인 후 Agent 실행
+• /approve → [실행] 대기 중이면 Agent 실행 · 초안만 있으면 /done 과 동일
 
 하단 버튼: Ask, Plan, Agent, 세션, 워크스페이스, 스킬, 설정…
 
-워크스페이스: /workspaces 또는 하단 「워크스페이스」 버튼 · /workspace C:\\path
-
-스킬: /skills — 매번 새로 ☑ 선택 → [적용] 또는 바로 질문 (다음 1회만, 여러 개 가능).
-
-/cancel — 진행 중 작업 취소
+/cancel — Plan 초안·승인 대기·진행 중 작업 취소
 /new — 새 세션
 /models — agent CLI 모델 목록
 /usage — Cursor 포함 사용량·모델별 통계 (CURSOR_SESSION_TOKEN)

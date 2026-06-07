@@ -26,6 +26,12 @@ export interface PendingPlanApproval {
   planMessageId: number;
 }
 
+export interface PlanDraft {
+  originalPrompt: string;
+  summary: string;
+  updatedAt: string;
+}
+
 export interface UserState {
   defaultMode: AgentMode;
   workspacePath: string;
@@ -39,6 +45,8 @@ export interface UserState {
   pendingSkillNames: string[];
   skillSettingSources: SettingSource[];
   pendingPlanApproval?: PendingPlanApproval;
+  /** Plan 초안 — /done 전까지 실행 버튼 없음 */
+  planDraft?: PlanDraft;
   wizard?: UserWizard;
   awaitingPromptMode?: Exclude<AgentMode, "smart">;
 }

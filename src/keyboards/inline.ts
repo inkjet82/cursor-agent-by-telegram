@@ -3,9 +3,11 @@ import type { DiscoveredSkill, SessionRecord, WorkspaceEntry } from "../types.js
 import { shortId } from "../utils/paths.js";
 
 export function planApprovalKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("실행", "plan:exec")
-    .text("취소", "plan:cancel");
+  return new InlineKeyboard().text("실행", "plan:exec");
+}
+
+export function planDraftKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("계획 완료", "plan:finalize");
 }
 
 export function settingsMenuKeyboard(): InlineKeyboard {

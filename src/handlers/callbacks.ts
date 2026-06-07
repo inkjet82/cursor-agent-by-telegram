@@ -28,18 +28,37 @@ import {
 } from "./model-params-ui.js";
 
 export function registerCallbacks(bot: Bot<BotContext>): void {
-  bot.callbackQuery(/^plan:(exec|cancel)$/, async (ctx) => {
+  bot.callbackQuery(/^plan:(exec|cancel|finalize)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const userId = ctx.from!.id;
-    const state = await ctx.app.userStore.get(userId);
-    const pending = state.pendingPlanApproval;
-    if (!pending) {
-      await ctx.reply("대기 중인 Plan이 없습니다.");
+    const action = ctx.match![1];
+
+    if (action === "finalize") {
+      const ok = await ctx.app.runner.finalizePlanDraft(
+        userId,
+        ctx.chat!.id,
+        ctx.api,
+      );
+      if (!ok) {
+        await ctx.reply("완료할 Plan 초안이 없습니다. /plan 으로 시작하세요.");
+        return;
+      }
+      await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
       return;
     }
 
-    if (ctx.match![1] === "cancel") {
-      await ctx.app.userStore.update(userId, { pendingPlanApproval: undefined });
+    const state = await ctx.app.userStore.get(userId);
+    const pending = state.pendingPlanApproval;
+    if (!pending) {
+      await ctx.reply("대기 중인 Plan이 없습니다. /done 으로 계획을 완료하세요.");
+      return;
+    }
+
+    if (action === "cancel") {
+      await ctx.app.userStore.update(userId, {
+        pendingPlanApproval: undefined,
+        planDraft: undefined,
+      });
       await ctx.editMessageReplyMarkup({ reply_markup: undefined });
       await ctx.reply("Plan 실행을 취소했습니다.");
       return;
